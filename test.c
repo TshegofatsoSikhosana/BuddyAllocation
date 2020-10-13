@@ -19,20 +19,28 @@ int main(){
 
     struct head* bud = buddy(block);
     //blockinfo(bud);
+    printf("\n");
+    printf("bud %p. \n", bud);
+    printf("\n");
+
+
+    struct head* merged = merge(block,block);
+    blockinfo(merged);
 
     struct head* splitted = split(block);
     blockinfo(splitted);
 
     struct head* primes = primary(splitted);
     blockinfo(primes);
+
     struct head* primeb = primary(block);
     blockinfo(primeb);
 
     struct head* hiddenblockhead = hide(block);
-    blockinfo(hiddenblockhead);
+    //blockinfo(hiddenblockhead);
 
     struct head* unhiddenblockhead = magic(hiddenblockhead);
-    blockinfo(unhiddenblockhead);
+    //blockinfo(unhiddenblockhead);
 
     int leveltest1 = level(32);
     printf("min required level = %d\n",leveltest1);
