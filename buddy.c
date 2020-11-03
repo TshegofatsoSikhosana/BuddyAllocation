@@ -1,139 +1,153 @@
-
+#define MIN 5
+#define LEVELS 8
+#define PAGE 4096
 #include "buddy.h"
 #include <sys/mman.h>
 #include <stddef.h>
 #include <stdio.h>
 #include <math.h>
 #include <assert.h>
-#include <stdbool.h>
 
-#define MINIMUM 5
-#define MAXIMUM 12
+enum flag{Free,Taken};
 
 struct head {
-
-	int level;
+	enum flag status;
+	short int level;
 	struct head *next;
 	struct head *prev;
-	bool status;
-
 };
 
 struct head *new() {
+	struct head *new = (struct head *) mmap(NULL,PAGE,PROT_READ | PROT_WRITE,MAP_PRIVATE | MAP_ANONYMOUS,-1,0);
 
-
-	size_t 	pagesize = (size_t)pow(2, MAXIMUM);
-	struct head* map = mmap(
-	(void *) pagesize,
-	pagesize,
-	PROT_READ|PROT_WRITE|PROT_EXEC,
-	MAP_ANON|MAP_PRIVATE,
-	0,
-	0);
-
-	if(map == MAP_FAILED){
-		fprintf(stderr, "malloc failed\n");
+	if(new == MAP_FAILED){
 		return NULL;
 	}
-
-	map->status = true;
-	map->level = 7;
-	map->next = NULL;
-	map->prev = NULL;
-
-	return map;
-
+	assert (((long int) new & 0xfff) ==0); //checking that the 12 last bits should be zero
+	new->status = Free;
+	new->level = LEVELS -1;
+	return new;
 }
 
 struct head *buddy(struct head* block){
-
-	if(block->level == 7){
-		fprintf(stderr, "Does not have buddy\n");
-		return NULL;
-	}
-	else if(block->next == NULL){
-		return block->prev;
-	}
-	else{
-		return block->next;
-	}
-
-
-
+	int index = block->level;
+	long int mask = 0x1 << (index + MIN);
+	return (struct head*)((long int) block ^ mask);
 }
 
 struct head *split(struct head* block){
-
-	if(block->level == 0){
-		fprintf(stderr, "Cannot split\n");
-		return block;
-	}
-
-	//struct head *temp = block->next;
-
-	block->level = block->level - 1;
-	block->next = block + (int)(pow(2, block->level+MINIMUM)/2);
-
-	// struct head *next = block->next;
-	// next->next = temp;
-	// next->prev = block;
-
-	return block;
-
-
+	int index = block->level-1;
+	int mask = 0x1 << (index + MIN);
+	return (struct head*)((long int)block | mask);
 }
 
 struct head *primary(struct head* block){
-
-	if(block->prev != NULL){
-		return block->prev;
-	}else{
-		return block;
-	}
-
-}
-
-struct head *merge(struct head* blockA, struct head* blockB){
-
-	if(primary(blockA) == blockA){
-		blockA->next = blockB->next;
-		blockA->level = blockA->level + 1;
-		return blockA;
-	}
-	else{
-		blockB->next = blockA->next;
-		blockB->level = blockB->level + 1;
-		return blockB;
-	}
-
+	int index = block->level;
+	long int mask = 0xffffffffffffffff << (1 + index + MIN);
+	return (struct head*)((long int)block & mask);
 }
 
 void *hide(struct head* block){
-
-	return (block + sizeof(struct head));
-
+	return (void*)(block +1);
 }
-
 
 struct head *magic(void *memory){
-
-	return (struct head*)(memory - sizeof(struct head));
-
+	return ((struct head*)memory-1);
 }
-
 
 int level(int req){
+	int total = req + sizeof(struct head);
+	int i=0;
+	int size =1 << MIN;
+	while(total > size){
+		size <<=1;
+		i += 1;
+	}
+	return i;
 
-	if(req > 4096){
-		fprintf(stderr, "Request too big \n");
-		return 1;
-	}
-	else{
-		double x = round(log2(req));
-		int level = (int) x;
-		return level - MINIMUM;
-	}
 }
+
+
+/** Mark a data block as free and merge free buddy blocks **/
+void bfree(void *ptr)
+{
+    // TODO
+    // check if pointer is valid
+    if (!valid_address(ptr))
+    {
+        return;
+    }
+    // get block
+    block *b = get_block(ptr);
+
+    // check if block was found
+    if (!b)
+    {
+        return;
+    }
+
+    // set free to true
+    b->free = true;
+
+    // check if buddy is free
+    while (b->buddy && b->buddy->free && b->size == b->buddy->size)
+    {
+        // merge blocks
+        b = merge_block(b);
+    }
+    ptr = b->data;
+    //b->data = NULL;
+}
+
+/** Change the memory allocation of the data to have at least the requested size **/
+void *balloc(void *ptr, size_t size)
+{
+	// TODO
+	// check size
+	if (size <= 0)
+	{
+			return NULL;
+	}
+	// create block and find nearest block size
+	block *b;
+	int s = find_nearest_block_size(size + sizeof(block));
+
+	// check if head is null
+	if (!head)
+	{
+			// create head block
+			head = (block *)sbrk(MAX_SIZE);
+			head->buddy = NULL;
+			head->free = true;
+			head->next = NULL;
+			head->size = MAX_SIZE;
+			for (int i = 0; i < MAX_EXP; i++)
+			{
+					head->merge_buddy[i] = NULL;
+			}
+			head->data = (void *)head + sizeof(block);
+	}
+
+	// find block that can fit the size that's required
+	b = find_block(s);
+
+	// check if block was found
+	if (!b)
+	{
+			return NULL;
+	}
+
+	// reduce block to appropriate size
+	while (((int)b->size) > s)
+	{
+			split_block(b);
+	}
+
+	b->free = false;
+	b->data = (void *)b + sizeof(block);
+	return b->data;
+}
+
 
 void dispblocklevel(struct head* block){
 	printf("block level = %d\n",block->level);
